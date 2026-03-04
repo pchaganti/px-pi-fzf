@@ -49,7 +49,7 @@ async function runFzfSelector(
 
   if (result.code !== 0) {
     ctx.ui.notify(
-      `fzf:${cmd.name}: list command failed (exit ${result.code})`,
+      `fzf:${cmd.name}: list command failed (exit ${result.code})${result.stderr ? `\n${result.stderr}` : ""}`,
       "error",
     );
     return;

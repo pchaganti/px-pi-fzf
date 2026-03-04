@@ -18,6 +18,25 @@ pi install npm:pi-fzf
 pi install github.com/kaofelix/pi-fzf
 ```
 
+## Dependencies
+
+The examples in this README use [`fd`](https://github.com/sharkdp/fd) for fast file finding. It's not installed by default on most systems:
+
+| OS | Install command | Notes |
+|----|-----------------|-------|
+| macOS | `brew install fd` | |
+| Ubuntu/Debian | `apt install fd-find` | Binary is `fdfind`, not `fd` (see below) |
+| Fedora | `dnf install fd-find` | |
+| Arch | `pacman -S fd` | |
+
+### Ubuntu/Debian note
+
+On Ubuntu and Debian, the binary is installed as `fdfind` to avoid conflicts. Either:
+- Use `fdfind` in your commands instead of `fd`
+- Create a symlink: `ln -s $(which fdfind) ~/.local/bin/fd`
+
+You can also use standard `find` instead of `fd` if you prefer not to install additional tools.
+
 ## Configuration
 
 Create a config file to define your commands:
