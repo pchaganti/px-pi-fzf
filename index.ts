@@ -99,7 +99,7 @@ async function runFzfSelector(
         };
 
   const selected = await ctx.ui.custom<string | null>(
-    (tui, theme, _kb, done) => {
+    (tui, theme, keybindings, done) => {
       tuiRef = tui;
 
       const selectorTheme: SelectorTheme = {
@@ -138,6 +138,7 @@ async function runFzfSelector(
               showBottomBorder: true,
               showTitle: !cmd.hideHeader,
             },
+        keybindings,
       );
 
       // Set up preview callback if preview is configured

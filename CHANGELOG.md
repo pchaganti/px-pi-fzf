@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.8.1] - 2026-04-23
+
+### Fixed
+
+- Restore selector keybinding hints and navigation on newer pi releases after the shared keybindings API migration
+
 ## [0.8.0] - 2026-03-13
 
 ### Added
