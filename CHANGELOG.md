@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Optional `multiSelect` command mode with fzf-style `Tab` / `Shift+Tab` toggling and newline-joined `{{selected}}` output on accept
+
 ## [0.8.1] - 2026-04-23
 
 ### Fixed

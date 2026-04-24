@@ -8,7 +8,7 @@ import {
   visibleWidth,
 } from "@mariozechner/pi-tui";
 import { extendedMatch, Fzf, type FzfResultItem } from "fzf";
-import type { FzfSettings } from "./config.js";
+import type { FzfSettings, SelectionValue } from "./config.js";
 
 export interface SelectorTheme {
   accent: (text: string) => string;
@@ -29,6 +29,7 @@ export interface SelectorRenderOptions {
   showTopBorder?: boolean;
   showBottomBorder?: boolean;
   showTitle?: boolean;
+  multiSelect?: boolean;
 }
 
 type KeybindingsLike = {
@@ -124,9 +125,11 @@ export class FuzzySelector extends Container implements Focusable {
   private showTopBorder: boolean;
   private showBottomBorder: boolean;
   private showTitle: boolean;
+  private multiSelect: boolean;
+  private markedItems = new Set<string>();
   private keybindings: KeybindingsLike | undefined;
 
-  public onSelect?: (item: string) => void;
+  public onSelect?: (item: SelectionValue) => void;
   public onCancel?: () => void;
 
   // --- Preview state ---
@@ -216,6 +219,7 @@ export class FuzzySelector extends Container implements Focusable {
     this.showTopBorder = options?.showTopBorder ?? true;
     this.showBottomBorder = options?.showBottomBorder ?? true;
     this.showTitle = options?.showTitle ?? true;
+    this.multiSelect = options?.multiSelect ?? false;
     this.keybindings = resolveKeybindings(keybindings);
 
     // Initial unfiltered list
@@ -234,52 +238,83 @@ export class FuzzySelector extends Container implements Focusable {
     this.input = new Input();
   }
 
+  private moveSelection(delta: number, wrap = true): void {
+    if (this.filtered.length === 0) return;
+
+    if (wrap) {
+      const total = this.filtered.length;
+      this.selectedIndex = (this.selectedIndex + delta + total) % total;
+    } else {
+      this.selectedIndex = Math.max(
+        0,
+        Math.min(this.filtered.length - 1, this.selectedIndex + delta),
+      );
+    }
+
+    this.previewScrollOffset = 0;
+    this.loadPreviewForCurrentSelection();
+  }
+
+  private toggleMarkedState(): void {
+    const entry = this.filtered[this.selectedIndex];
+    if (!entry) return;
+
+    if (this.markedItems.has(entry.item)) {
+      this.markedItems.delete(entry.item);
+    } else {
+      this.markedItems.add(entry.item);
+    }
+  }
+
+  private getAcceptedSelection(): SelectionValue | null {
+    const entry = this.filtered[this.selectedIndex];
+    if (!entry) return null;
+
+    if (!this.multiSelect || this.markedItems.size === 0) {
+      return entry.item;
+    }
+
+    return this.candidates.filter((item) => this.markedItems.has(item));
+  }
+
+  private renderListEntry(entry: FzfEntry, isSelected: boolean): string {
+    const t = this.selectorTheme;
+    const isMarked = this.multiSelect && this.markedItems.has(entry.item);
+    const prefix = this.multiSelect
+      ? `${isSelected ? "→" : " "} ${isMarked ? "✓" : " "} `
+      : isSelected
+        ? "→ "
+        : "  ";
+    const highlighted = highlightMatches(entry.item, entry.positions, t.match);
+
+    if (isSelected) {
+      return t.accent(prefix) + t.accent(highlighted);
+    }
+
+    return (isMarked ? t.accent(prefix) : prefix) + highlighted;
+  }
+
   handleInput(data: string): void {
     const kb = this.keybindings;
 
     // Navigation: up/down (uses selectUp/selectDown keybindings)
     if (matchesSelectKey(kb, data, "selectUp")) {
-      if (this.filtered.length > 0) {
-        this.selectedIndex =
-          this.selectedIndex === 0
-            ? this.filtered.length - 1
-            : this.selectedIndex - 1;
-      }
-      // Trigger preview load on selection change
-      this.loadPreviewForCurrentSelection();
+      this.moveSelection(-1);
       return;
     }
 
     if (matchesSelectKey(kb, data, "selectDown")) {
-      if (this.filtered.length > 0) {
-        this.selectedIndex =
-          this.selectedIndex === this.filtered.length - 1
-            ? 0
-            : this.selectedIndex + 1;
-      }
-      // Trigger preview load on selection change
-      this.loadPreviewForCurrentSelection();
+      this.moveSelection(1);
       return;
     }
 
     if (matchesSelectKey(kb, data, "selectPageUp")) {
-      if (this.filtered.length > 0) {
-        this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisible);
-      }
-      // Trigger preview load on selection change
-      this.loadPreviewForCurrentSelection();
+      this.moveSelection(-this.maxVisible, false);
       return;
     }
 
     if (matchesSelectKey(kb, data, "selectPageDown")) {
-      if (this.filtered.length > 0) {
-        this.selectedIndex = Math.min(
-          this.filtered.length - 1,
-          this.selectedIndex + this.maxVisible,
-        );
-      }
-      // Trigger preview load on selection change
-      this.loadPreviewForCurrentSelection();
+      this.moveSelection(this.maxVisible, false);
       return;
     }
 
@@ -305,11 +340,23 @@ export class FuzzySelector extends Container implements Focusable {
       }
     }
 
+    if (this.multiSelect && matchesKey(data, "tab" as KeyId)) {
+      this.toggleMarkedState();
+      this.moveSelection(1);
+      return;
+    }
+
+    if (this.multiSelect && matchesKey(data, "shift+tab" as KeyId)) {
+      this.toggleMarkedState();
+      this.moveSelection(-1);
+      return;
+    }
+
     // Select (uses selectConfirm keybinding)
     if (matchesSelectKey(kb, data, "selectConfirm")) {
-      const entry = this.filtered[this.selectedIndex];
-      if (entry) {
-        this.onSelect?.(entry.item);
+      const selection = this.getAcceptedSelection();
+      if (selection) {
+        this.onSelect?.(selection);
       }
       return;
     }
@@ -413,21 +460,9 @@ export class FuzzySelector extends Container implements Focusable {
           const entry = this.filtered[i];
           if (!entry) continue;
           const isSelected = i === this.selectedIndex;
-          const prefix = isSelected ? "→ " : "  ";
+          const content = this.renderListEntry(entry, isSelected);
 
-          const highlighted = highlightMatches(
-            entry.item,
-            entry.positions,
-            t.match,
-          );
-
-          const content = isSelected
-            ? t.accent(prefix) + t.accent(highlighted)
-            : prefix + highlighted;
-
-          listLines.push(
-            truncateToWidth(content, listWidth - 3, ""), // -3 for prefix and padding
-          );
+          listLines.push(truncateToWidth(content, listWidth, ""));
         }
       }
 
@@ -471,6 +506,11 @@ export class FuzzySelector extends Container implements Focusable {
         lines.push(boxLine(t.dim(info), innerWidth, side));
       }
 
+      if (this.multiSelect && this.markedItems.size > 0) {
+        const selectedInfo = `  ${this.markedItems.size} selected`;
+        lines.push(boxLine(t.dim(selectedInfo), innerWidth, side));
+      }
+
       // Help line
       const upKey = prettyKey(getSelectKeyText(this.keybindings, "selectUp"));
       const downKey = prettyKey(
@@ -482,9 +522,8 @@ export class FuzzySelector extends Container implements Focusable {
       const cancelKey = prettyKey(
         getSelectKeyText(this.keybindings, "selectCancel"),
       );
-      const helpText = this.previewTemplate
-        ? ` ${upKey} ${downKey} nav • ${confirmKey} select • ${cancelKey} cancel • shift+↑↓ scroll preview`
-        : ` ${upKey} ${downKey} navigate • ${confirmKey} select • ${cancelKey} cancel`;
+      const multiSelectHint = this.multiSelect ? " • tab/s-tab toggle" : "";
+      const helpText = ` ${upKey} ${downKey} nav${multiSelectHint} • ${confirmKey} select • ${cancelKey} cancel • shift+↑↓ scroll preview`;
       lines.push(boxLine(t.dim(helpText), innerWidth, side));
     } else {
       // Single pane layout (no preview)
@@ -507,20 +546,10 @@ export class FuzzySelector extends Container implements Focusable {
           const entry = this.filtered[i];
           if (!entry) continue;
           const isSelected = i === this.selectedIndex;
-          const prefix = isSelected ? "→ " : "  ";
-
-          const highlighted = highlightMatches(
-            entry.item,
-            entry.positions,
-            t.match,
-          );
-
-          const content = isSelected
-            ? t.accent(prefix) + t.accent(highlighted)
-            : prefix + highlighted;
+          const content = this.renderListEntry(entry, isSelected);
 
           lines.push(
-            boxLine(truncateToWidth(content, innerWidth), innerWidth, side),
+            boxLine(truncateToWidth(content, innerWidth, ""), innerWidth, side),
           );
         }
 
@@ -529,6 +558,11 @@ export class FuzzySelector extends Container implements Focusable {
           const info = `  (${this.selectedIndex + 1}/${total})`;
           lines.push(boxLine(t.dim(info), innerWidth, side));
         }
+      }
+
+      if (this.multiSelect && this.markedItems.size > 0) {
+        const selectedInfo = `  ${this.markedItems.size} selected`;
+        lines.push(boxLine(t.dim(selectedInfo), innerWidth, side));
       }
 
       // Help line
@@ -542,10 +576,11 @@ export class FuzzySelector extends Container implements Focusable {
       const cancelKey = prettyKey(
         getSelectKeyText(this.keybindings, "selectCancel"),
       );
+      const multiSelectHint = this.multiSelect ? " • tab/s-tab toggle" : "";
       lines.push(
         boxLine(
           t.dim(
-            ` ${upKey} ${downKey} navigate • ${confirmKey} select • ${cancelKey} cancel`,
+            ` ${upKey} ${downKey} navigate${multiSelectHint} • ${confirmKey} select • ${cancelKey} cancel`,
           ),
           innerWidth,
           side,
