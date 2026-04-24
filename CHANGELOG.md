@@ -2,9 +2,15 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-24
+
 ### Added
 
-- Optional `multiSelect` command mode with fzf-style `Tab` / `Shift+Tab` toggling and newline-joined `{{selected}}` output on accept
+- Optional `multiSelect` command mode with fzf-style `Tab` / `Shift+Tab` toggling and newline-joined `{{selected}}` output on accept (thanks [@DerekStride](https://github.com/DerekStride)!)
+
+### Fixed
+
+- Preview pane now rerenders immediately when async preview content finishes loading instead of waiting for the next keypress (thanks [@DerekStride](https://github.com/DerekStride)!)
 
 ## [0.8.1] - 2026-04-23
 
